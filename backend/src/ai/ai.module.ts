@@ -6,9 +6,24 @@ import { ChatOpenAI } from '@langchain/openai';
 import { tool } from '@langchain/core/tools';
 import z from 'zod';
 import { KnowledgeModule } from '../knowledge/knowledge.module';
-import { KnowledgeRetrievalService } from '../knowledge/knowledge-retrieval.service';
+import {
+  type RetrievedChunk,
+  KnowledgeRetrievalService,
+} from '../knowledge/knowledge-retrieval.service';
 import { GithubPublicService } from '../knowledge/github-public.service';
 import { FriendApiKeyGuard } from '../common/guards/friend-api-key.guard';
+
+/** 把检索片段拼成模型可读的纯文本。 */
+function formatKnowledgeChunks(rows: RetrievedChunk[]): string {
+  return rows
+    .map((row, i) => {
+      const cite = row.source
+        ? `[片段${i + 1} 来源:${row.source}${row.kind ? ` 类型:${row.kind}` : ''}]`
+        : `[片段${i + 1}]`;
+      return `${cite}\n${row.text}`;
+    })
+    .join('\n\n---\n\n');
+}
 
 @Module({
   imports: [KnowledgeModule],
@@ -166,13 +181,16 @@ import { FriendApiKeyGuard } from '../common/guards/friend-api-key.guard';
     },
     {
       provide: 'KNOWLEDGE_SEARCH_TOOL',
-      useFactory: (retrieval: KnowledgeRetrievalService) => {
+      useFactory: (
+        retrieval: KnowledgeRetrievalService,
+        github: GithubPublicService,
+      ) => {
         const schema = z.object({
           query: z
             .string()
             .min(1)
             .describe(
-              '用于语义检索的问句或关键词，对应个人已上传/已同步的知识库',
+              '用于语义检索的问句或关键词。若用户指定了 GitHub 仓库，必须包含 owner/repo',
             ),
           topK: z
             .number()
@@ -188,7 +206,31 @@ import { FriendApiKeyGuard } from '../common/guards/friend-api-key.guard';
               return '个人知识库未配置或未启用（缺少 Qdrant 环境变量）。请服务端配置 QDRANT_URL（及云端所需的 QDRANT_API_KEY），通过 /knowledge/ingest/* 入库后再试。';
             }
             try {
-              return await retrieval.searchAsContext(query, topK ?? 12);
+              const namedRepo = query.match(/[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+/)?.[0];
+              const rows = await retrieval.search(query, topK ?? 12);
+              const matched = namedRepo
+                ? rows.filter(
+                    (row) => row.source?.toLowerCase() === namedRepo.toLowerCase(),
+                  )
+                : rows;
+              if (matched.length) return formatKnowledgeChunks(matched);
+              if (!namedRepo) return '（未在当前向量库中检索到相关片段。）';
+              // 向量库里没有这个仓库时，改读 GitHub 公开说明，避免拿别的仓库片段判断为无资料。
+              const doc = await github.getRepoDocument(namedRepo);
+              if (!doc) {
+                return `（未在当前向量库中检索到 ${namedRepo}，GitHub 上也没有这个公开仓库。）`;
+              }
+              const readme = doc.readme?.trim()
+                ? doc.readme.trim().slice(0, 6000)
+                : '（该仓库无 README 或无法读取原始 README。）';
+              const meta = [
+                `仓库: ${doc.full_name}`,
+                doc.description ? `描述: ${doc.description}` : '',
+                `链接: ${doc.html_url}`,
+              ]
+                .filter(Boolean)
+                .join('\n');
+              return `[片段1 来源:${doc.full_name} 类型:github]\n${meta}\n\n--- README ---\n\n${readme}`;
             } catch (e) {
               return `检索知识库失败：${(e as Error).message}`;
             }
@@ -201,7 +243,7 @@ import { FriendApiKeyGuard } from '../common/guards/friend-api-key.guard';
           },
         );
       },
-      inject: [KnowledgeRetrievalService],
+      inject: [KnowledgeRetrievalService, GithubPublicService],
     },
     {
       provide: 'GITHUB_PUBLIC_TOOL',
@@ -218,7 +260,7 @@ import { FriendApiKeyGuard } from '../common/guards/friend-api-key.guard';
             .string()
             .min(1)
             .optional()
-            .describe('GitHub 用户名，例如 Little-Curry-Spicy（可与 repo 搭配）'),
+            .describe('GitHub 用户名，例如 Ben-Spicy（可与 repo 搭配）'),
           repo: z
             .string()
             .min(1)
@@ -294,7 +336,7 @@ import { FriendApiKeyGuard } from '../common/guards/friend-api-key.guard';
           username: z
             .string()
             .min(1)
-            .describe('GitHub 用户名，例如 Little-Curry-Spicy'),
+            .describe('GitHub 用户名，例如 Ben-Spicy'),
           maxRepos: z
             .number()
             .int()

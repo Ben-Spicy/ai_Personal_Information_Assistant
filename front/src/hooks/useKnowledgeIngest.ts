@@ -37,7 +37,7 @@ async function mergeHeaders(
  * 管理知识库更新：简历上传覆盖 + GitHub 同步。
  */
 export function useKnowledgeIngest(apiBase: string, options: UseKnowledgeIngestOptions = {}) {
-  const { getAuthHeaders, initialGithubUser = 'Little-Curry-Spicy' } = options
+  const { getAuthHeaders, initialGithubUser = 'Ben-Spicy' } = options
   const [uploadBusy, setUploadBusy] = useState(false)
   const [githubBusy, setGithubBusy] = useState(false)
   const [githubUser, setGithubUser] = useState(initialGithubUser)

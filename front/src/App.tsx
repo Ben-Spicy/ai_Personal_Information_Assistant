@@ -68,7 +68,7 @@ const PROJECT_CARDS: ProjectCard[] = [
   {
     id: 'otc-flutter',
     name: 'OTC-Flutter',
-    repo: 'Little-Curry-Spicy/OTC-Flutter',
+    repo: 'Ben-Spicy/OTC-Flutter',
     techStack: 'Flutter 3.7+ · Dio · SharedPreferences · Material；Android / iOS / Web / 桌面同一套代码',
     intro:
       'OTC365 场外（OTC/P2P）客户端：总资产与收益看板、广告市场与筛选、下单与订单流转、账户与基础设置等完整交易闭环。',
@@ -77,7 +77,7 @@ const PROJECT_CARDS: ProjectCard[] = [
   {
     id: 'blog',
     name: 'blog',
-    repo: 'Ben-artist/blog',
+    repo: 'Ben-Spicy/blog',
     techStack: 'VitePress 2.0 · Vue 3 · TypeScript · Markdown · GitHub Actions · Netlify',
     intro:
       '个人技术博客：前端原理、网络、算法与 Web3 等主题，支持深色模式、本地搜索、代码高亮与自动部署。',

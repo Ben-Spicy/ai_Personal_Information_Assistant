@@ -33,20 +33,20 @@
 - **入库自动质检**：上述两个入库接口会在返回体里附带 `qualityReport`（可检索项通过/失败、证据片段）。
 - **手动质检**：`POST /knowledge/quality-check`
   - 文件质检：`{ "profile":"file", "source":"Ben_resume.docx" }`
-  - GitHub 质检：`{ "profile":"github", "username":"Little-Curry-Spicy" }`
+  - GitHub 质检：`{ "profile":"github", "username":"Ben-Spicy" }`
 - **对话**：`POST /ai/chat`（与原先一致），Agent 内置 `search_personal_knowledge`、`github_public_repo`（owner/repo）、`web_search`。
 
 **环境变量（补充）**
 
-| 变量 | 说明 |
-|------|------|
-| `QDRANT_URL` | Qdrant 集群 URL（控制台中的 Cluster URL，如 `https://xxxx.cloud.qdrant.io`） |
-| `QDRANT_API_KEY` | Qdrant Cloud API Key（自建无鉴权实例可留空） |
-| `QDRANT_COLLECTION` | 可选；Collection 名称，默认 `personal_intro` |
-| `EMBEDDING_MODEL` | 嵌入模型名，默认 `text-embedding-v4`（阿里云百炼兼容 OpenAI 时常用） |
+| 变量                   | 说明                                                                                 |
+| ---------------------- | ------------------------------------------------------------------------------------ |
+| `QDRANT_URL`           | Qdrant 集群 URL（控制台中的 Cluster URL，如 `https://xxxx.cloud.qdrant.io`）         |
+| `QDRANT_API_KEY`       | Qdrant Cloud API Key（自建无鉴权实例可留空）                                         |
+| `QDRANT_COLLECTION`    | 可选；Collection 名称，默认 `personal_intro`                                         |
+| `EMBEDDING_MODEL`      | 嵌入模型名，默认 `text-embedding-v4`（阿里云百炼兼容 OpenAI 时常用）                 |
 | `EMBEDDING_DIMENSIONS` | 向量维度，默认 `1024`（须与实际 embedding 输出维度一致；与 collection 向量维度一致） |
-| `GITHUB_TOKEN` | 可选；提高 GitHub API 限流，仅用于读公开接口 |
-| `GITHUB_USER_AGENT` | 可选；`User-Agent`，默认 `agui-backend` |
+| `GITHUB_TOKEN`         | 可选；提高 GitHub API 限流，仅用于读公开接口                                         |
+| `GITHUB_USER_AGENT`    | 可选；`User-Agent`，默认 `agui-backend`                                              |
 
 若你在控制台**手动**创建了 collection，请使用 **Cosine** 距离，向量维度等于 `EMBEDDING_DIMENSIONS`。
 

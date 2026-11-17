@@ -22,7 +22,7 @@ export class KnowledgeController {
   constructor(
     private readonly ingest: KnowledgeIngestService,
     private readonly quality: KnowledgeQualityService,
-  ) {}
+  ) { }
 
   /**
    * 上传 txt / pdf / docx，切块写入 Qdrant。
@@ -65,7 +65,7 @@ export class KnowledgeController {
   /**
    * 手动触发入库质检。
    * file 示例:  { "profile":"file", "source":"Ben_resume.docx" }
-   * github 示例:{ "profile":"github", "username":"Little-Curry-Spicy" }
+   * github 示例:{ "profile":"github", "username":"Ben-Spicy" }
    */
   @Post('quality-check')
   async qualityCheck(

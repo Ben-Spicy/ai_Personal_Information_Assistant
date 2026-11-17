@@ -1,8 +1,10 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { ChatOpenAI } from '@langchain/openai';
+import { SystemMessage } from '@langchain/core/messages';
 import { AIMessageChunk, createAgent } from 'langchain';
 import { UIMessage } from 'ai';
 import { toBaseMessages, toUIMessageStream } from '@ai-sdk/langchain';
+import { GithubPublicService } from '../knowledge/github-public.service';
 
 @Injectable()
 export class AiService {
@@ -17,6 +19,7 @@ export class AiService {
     @Inject('GITHUB_PUBLIC_USER_TOOL')
     private readonly githubPublicUserTool: any,
     @Inject('CHAT_MODEL') model: ChatOpenAI,
+    private readonly github: GithubPublicService,
   ) {
     this.agent = createAgent({
       model,
@@ -36,6 +39,7 @@ export class AiService {
 1. 仅允许基于下列依据作答档案事实（勿凭模型臆测）：
    - search_personal_knowledge（个人向量库）
    - github_public_repo / github_public_user（GitHub 公开仓库或用户仓库列表，按第 4～5.1 条规则调用）
+   - 本轮系统消息里标题为「指定仓库公开资料」的内容（与工具结果同等有效）
 2. 若问题涉及“当前时间/今天/今年/现在/年龄”等实时信息，必须先调用 get_current_time，再进行计算和回答，禁止凭记忆或训练时日期估算。
 3. 关于 web_search 使用策略：
    - 默认禁止使用 web_search；
@@ -44,19 +48,63 @@ export class AiService {
 4. 若用户问题涉及某个具体仓库：
    - 已给出 owner/repo：调用 github_public_repo；
    - 只给出 repo 名（如“fastAPI”）：先根据已知 username（来自用户提问或向量库命中的 GitHub 账号）定位仓库，再调用 github_public_repo（可用 username+repo）。
-5. 若用户问题是“GitHub 账号/地址/主页/有哪些项目”，优先调用 github_public_user 获取主页与仓库列表再回答；若问题未显式给 username，可从向量库命中内容中提取（如 Little-Curry-Spicy）。
+5. 若用户问题是“GitHub 账号/地址/主页/有哪些项目”，优先调用 github_public_user 获取主页与仓库列表再回答；若问题未显式给 username，可从向量库命中内容中提取（如 Ben-Spicy）。
 5.1 若用户询问「GitHub 整体技术方向 / 主要做哪类项目 / 仓库类型分布」等概括性问题：必须先调用 search_personal_knowledge；若片段中已能归纳方向则不必再调 GitHub API。若可识别 GitHub 用户名、且仅凭向量片段仍不足以概括「方向」，可再调用 github_public_user（可将 maxRepos 设为至多 10）获取公开仓库列表辅助归纳；避免在同一轮对话中重复调用。
 6. 若证据不足，不要扩写、不要给泛化建议、不要补充与资料无关的清单。
 6.1 若 github_public_repo 已返回仓库元数据（仓库名/链接/描述），即使 README 为空，也视为“有证据”，可基于这些元数据回答；仅在工具整体无结果时才判定证据不足。
-7. 若未检索到足够证据（且不满足第 3 条的 web_search 触发条件）时，只回复一句：
+7. 若工具返回或「指定仓库公开资料」里已有所问仓库的片段、描述或 README，必须据此回答，禁止改用证据不足的那一句。仅当这些材料都没有给出该仓库的任何内容（且不满足第 3 条的 web_search 触发条件）时，才只回复一句：
    「未在当前向量库或指定 GitHub 仓库中检索到可确认的信息。」
 8. 请用中文简洁作答；默认只输出“结论”一句，不输出“证据/来源/明确记载/量化结果”等小标题或解释，除非用户明确要求“展开说明/给证据”。
 9. 禁止使用“要不要我…/需要我…/是否要我…”等反问或引导句；禁止给“举例、演示、下一步建议”除非用户明确要求。`,
     });
   }
 
+  /**
+   * 从用户原文里取出第一个 owner/repo。
+   * 项目卡片会把仓库全名写进提问，向量库未同步该仓库时仍要能回答。
+   */
+  private namedRepoIn(messages: UIMessage[]): string | null {
+    for (let i = messages.length - 1; i >= 0; i -= 1) {
+      const message = messages[i];
+      if (message.role !== 'user') continue;
+      const parts = message.parts ?? [];
+      const text = parts
+        .filter(
+          (part): part is { type: 'text'; text: string } =>
+            part.type === 'text' && 'text' in part && typeof part.text === 'string',
+        )
+        .map((part) => part.text)
+        .join('\n');
+      return text.match(/[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+/)?.[0] ?? null;
+    }
+    return null;
+  }
+
   async stream(messages: UIMessage[]) {
     const lcMessages = await toBaseMessages(messages);
+    const namedRepo = this.namedRepoIn(messages);
+    if (namedRepo) {
+      const doc = await this.github.getRepoDocument(namedRepo);
+      if (doc) {
+        const readme = doc.readme?.trim()
+          ? doc.readme.trim().slice(0, 6000)
+          : '（该仓库无 README 或无法读取原始 README。）';
+        lcMessages.unshift(
+          new SystemMessage(
+            [
+              '指定仓库公开资料',
+              `仓库: ${doc.full_name}`,
+              doc.description ? `描述: ${doc.description}` : '',
+              `链接: ${doc.html_url}`,
+              '',
+              readme,
+            ]
+              .filter((line) => line !== '')
+              .join('\n'),
+          ),
+        );
+      }
+    }
     const lgStream = await this.agent.stream(
       { messages: lcMessages },
       {
